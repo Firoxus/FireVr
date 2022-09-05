@@ -1,0 +1,1394 @@
+local plr = game:GetService("Players").LocalPlayer
+local Notification = loadstring(game:HttpGet("https://api.irisapp.ca/Scripts/IrisBetterNotifications.lua"))()
+getgenv().IrisAd = true
+local v3_net, v3_808 = Vector3.new(0, 25.1, 0), Vector3.new(8, 0, 8)
+local function getNetlessVelocity(realPartVelocity)
+    local mag = realPartVelocity.Magnitude
+    if mag > 1 then
+        local unit = realPartVelocity.Unit
+        if (unit.Y > 0.25) or (unit.Y < -0.75) then
+            return unit * (25.1 / unit.Y)
+        end
+    end
+    return v3_net + realPartVelocity * v3_808
+end
+local simradius = "ssr" --simulation radius (net bypass) method
+--"shp" - sethiddenproperty
+--"ssr" - setsimulationradius
+--false - disable
+local simrad = 1000 --simulation radius value
+local healthHide = false --moves your head away every 3 seconds so players dont see your health bar (alignmode 4 only)
+local reclaim = true --if you lost control over a part this will move your primary part to the part so you get it back (alignmode 4)
+local novoid = true --prevents parts from going under workspace.FallenPartsDestroyHeight if you control them (alignmode 4 only)
+local physp = nil --PhysicalProperties.new(0.01, 0, 1, 0, 0) --sets .CustomPhysicalProperties to this for each part
+local noclipAllParts = false --set it to true if you want noclip
+local antiragdoll = true --removes hingeConstraints and ballSocketConstraints from your character
+local newanimate = true --disables the animate script and enables after reanimation
+local discharscripts = true --disables all localScripts parented to your character before reanimation
+local R15toR6 = true --tries to convert your character to r6 if its r15
+local humState16 = true --enables collisions for limbs before the humanoid dies (using hum:ChangeState)
+local addtools = false --puts all tools from backpack to character and lets you hold them after reanimation
+local hedafterneck = true --disable aligns for head and enable after neck or torso is removed
+local loadtime = game:GetService("Players").RespawnTime + 0.5 --anti respawn delay
+local method = 0 --reanimation method
+--methods:
+--0 - breakJoints (takes [loadtime] seconds to load)
+--1 - limbs
+--2 - limbs + anti respawn
+--3 - limbs + breakJoints after [loadtime] seconds
+--4 - remove humanoid + breakJoints
+--5 - remove humanoid + limbst
+local alignmode = 4 --AlignPosition mode
+--modes:
+--1 - AlignPosition rigidity enabled true
+--2 - 2 AlignPositions rigidity enabled both true and false
+--3 - AlignPosition rigidity enabled false
+--4 - CFrame
+local flingpart = "HumanoidRootPart" --name of the part or the hat used for flinging
+--the fling function
+--usage: fling(target, duration, velocity)
+--target can be set to: basePart, CFrame, Vector3, character model or humanoid (flings at mouse.Hit if argument not provided))
+--duration (fling time in seconds) can be set to a number or a string convertable to the number (0.5s if not provided),
+--velocity (fling part rotation velocity) can be set to a vector3 value (Vector3.new(20000, 20000, 20000) if not provided)
+
+local lp = game:GetService("Players").LocalPlayer
+local rs, ws, sg = game:GetService("RunService"), game:GetService("Workspace"), game:GetService("StarterGui")
+local stepped, heartbeat, renderstepped = rs.Stepped, rs.Heartbeat, rs.RenderStepped
+local twait, tdelay, rad, inf, abs, clamp = task.wait, task.delay, math.rad, math.huge, math.abs, math.clamp
+local cf, v3 = CFrame.new, Vector3.new
+local angles = CFrame.Angles
+local v3_0, cf_0 = v3(0, 0, 0), cf(0, 0, 0)
+
+local c = lp.Character
+if not (c and c.Parent) then
+    return
+end
+
+c:GetPropertyChangedSignal("Parent"):Connect(function()
+    if not (c and c.Parent) then
+        c = nil
+    end
+end)
+
+local clone, destroy, getchildren, getdescendants, isa = c.Clone, c.Destroy, c.GetChildren, c.GetDescendants, c.IsA
+
+local function gp(parent, name, className)
+    if typeof(parent) == "Instance" then
+        for i, v in pairs(getchildren(parent)) do
+            if (v.Name == name) and isa(v, className) then
+                return v
+            end
+        end
+    end
+    return nil
+end
+
+local fenv = getfenv()
+
+local shp = fenv.sethiddenproperty or fenv.set_hidden_property or fenv.set_hidden_prop or fenv.sethiddenprop
+local ssr = fenv.setsimulationradius or fenv.set_simulation_radius or fenv.set_sim_radius or fenv.setsimradius or fenv.setsimrad or fenv.set_sim_rad
+
+healthHide = healthHide and ((method == 0) or (method == 3)) and gp(c, "Head", "BasePart")
+
+local reclaim, lostpart = reclaim and c.PrimaryPart, nil
+
+local function align(Part0, Part1)
+    
+    local att0 = Instance.new("Attachment")
+    att0.Position, att0.Orientation, att0.Name = v3_0, v3_0, "att0_" .. Part0.Name
+    local att1 = Instance.new("Attachment")
+    att1.Position, att1.Orientation, att1.Name = v3_0, v3_0, "att1_" .. Part1.Name
+
+    if alignmode == 4 then
+    
+        local hide = false
+        if Part0 == healthHide then
+            healthHide = false
+            tdelay(0, function()
+                while twait(2.9) and Part0 and c do
+                    hide = #Part0:GetConnectedParts() == 1
+                    twait(0.1)
+                    hide = false
+                end
+            end)
+        end
+        
+        local rot = rad(0.05)
+        local con0, con1 = nil, nil
+        con0 = stepped:Connect(function()
+            if not (Part0 and Part1) then return con0:Disconnect() and con1:Disconnect() end
+            Part0.RotVelocity = Part1.RotVelocity
+        end)
+        local lastpos = Part0.Position
+        con1 = heartbeat:Connect(function(delta)
+            if not (Part0 and Part1 and att1) then return con0:Disconnect() and con1:Disconnect() end
+            if (not Part0.Anchored) and (Part0.ReceiveAge == 0) then
+                if lostpart == Part0 then
+                    lostpart = nil
+                end
+                rot = -rot
+                local newcf = Part1.CFrame * att1.CFrame * angles(0, 0, rot)
+                if Part1.Velocity.Magnitude > 0.01 then
+                    Part0.Velocity = getNetlessVelocity(Part1.Velocity)
+                else
+                    Part0.Velocity = getNetlessVelocity((newcf.Position - lastpos) / delta)
+                end
+                lastpos = newcf.Position
+                if lostpart and (Part0 == reclaim) then
+                    newcf = lostpart.CFrame
+                elseif hide then
+                    newcf += v3(0, 3000, 0)
+                end
+                if novoid and (newcf.Y < ws.FallenPartsDestroyHeight + 0.1) then
+                    newcf += v3(0, ws.FallenPartsDestroyHeight + 0.1 - newcf.Y, 0)
+                end
+                Part0.CFrame = newcf
+            elseif (not Part0.Anchored) and (abs(Part0.Velocity.X) < 45) and (abs(Part0.Velocity.Y) < 25) and (abs(Part0.Velocity.Z) < 45) then
+                lostpart = Part0
+            end
+        end)
+    
+    else
+        
+        Part0.CustomPhysicalProperties = physp
+        if (alignmode == 1) or (alignmode == 2) then
+            local ape = Instance.new("AlignPosition")
+            ape.MaxForce, ape.MaxVelocity, ape.Responsiveness = inf, inf, inf
+            ape.ReactionForceEnabled, ape.RigidityEnabled, ape.ApplyAtCenterOfMass = false, true, false
+            ape.Attachment0, ape.Attachment1, ape.Name = att0, att1, "AlignPositionRtrue"
+            ape.Parent = att0
+        end
+        
+        if (alignmode == 2) or (alignmode == 3) then
+            local apd = Instance.new("AlignPosition")
+            apd.MaxForce, apd.MaxVelocity, apd.Responsiveness = inf, inf, inf
+            apd.ReactionForceEnabled, apd.RigidityEnabled, apd.ApplyAtCenterOfMass = false, false, false
+            apd.Attachment0, apd.Attachment1, apd.Name = att0, att1, "AlignPositionRfalse"
+            apd.Parent = att0
+        end
+        
+        local ao = Instance.new("AlignOrientation")
+        ao.MaxAngularVelocity, ao.MaxTorque, ao.Responsiveness = inf, inf, inf
+        ao.PrimaryAxisOnly, ao.ReactionTorqueEnabled, ao.RigidityEnabled = false, false, false
+        ao.Attachment0, ao.Attachment1 = att0, att1
+        ao.Parent = att0
+        
+        local con0, con1 = nil, nil
+        local vel = Part0.Velocity
+        con0 = renderstepped:Connect(function()
+            if not (Part0 and Part1) then return con0:Disconnect() and con1:Disconnect() end
+            Part0.Velocity = vel
+        end)
+        local lastpos = Part0.Position
+        con1 = heartbeat:Connect(function(delta)
+            if not (Part0 and Part1) then return con0:Disconnect() and con1:Disconnect() end
+            vel = Part0.Velocity
+            if Part1.Velocity.Magnitude > 0.01 then
+                Part0.Velocity = getNetlessVelocity(Part1.Velocity)
+            else
+                Part0.Velocity = getNetlessVelocity((Part0.Position - lastpos) / delta)
+            end
+            lastpos = Part0.Position
+        end)
+    
+    end
+
+    att0:GetPropertyChangedSignal("Parent"):Connect(function()
+        Part0 = att0.Parent
+        if not isa(Part0, "BasePart") then
+            att0 = nil
+            if lostpart == Part0 then
+                lostpart = nil
+            end
+            Part0 = nil
+        end
+    end)
+    att0.Parent = Part0
+    
+    att1:GetPropertyChangedSignal("Parent"):Connect(function()
+        Part1 = att1.Parent
+        if not isa(Part1, "BasePart") then
+            att1 = nil
+            Part1 = nil
+        end
+    end)
+    att1.Parent = Part1
+end
+
+local function respawnrequest()
+    local ccfr, c = ws.CurrentCamera.CFrame, lp.Character
+    lp.Character = nil
+    lp.Character = c
+    local con = nil
+    con = ws.CurrentCamera.Changed:Connect(function(prop)
+        if (prop ~= "Parent") and (prop ~= "CFrame") then
+            return
+        end
+        ws.CurrentCamera.CFrame = ccfr
+        con:Disconnect()
+    end)
+end
+
+local destroyhum = (method == 4) or (method == 5)
+local breakjoints = (method == 0) or (method == 4)
+local antirespawn = (method == 0) or (method == 2) or (method == 3)
+
+hatcollide = hatcollide and (method == 0)
+
+addtools = addtools and lp:FindFirstChildOfClass("Backpack")
+
+if type(simrad) ~= "number" then simrad = 1000 end
+if shp and (simradius == "shp") then
+    tdelay(0, function()
+        while c do
+            shp(lp, "SimulationRadius", simrad)
+            heartbeat:Wait()
+        end
+    end)
+elseif ssr and (simradius == "ssr") then
+    tdelay(0, function()
+        while c do
+            ssr(simrad)
+            heartbeat:Wait()
+        end
+    end)
+end
+
+if antiragdoll then
+    antiragdoll = function(v)
+        if isa(v, "HingeConstraint") or isa(v, "BallSocketConstraint") then
+            v.Parent = nil
+        end
+    end
+    for i, v in pairs(getdescendants(c)) do
+        antiragdoll(v)
+    end
+    c.DescendantAdded:Connect(antiragdoll)
+end
+
+if antirespawn then
+    respawnrequest()
+end
+
+if method == 0 then
+    twait(loadtime)
+    if not c then
+        return
+    end
+end
+
+if discharscripts then
+    for i, v in pairs(getdescendants(c)) do
+        if isa(v, "LocalScript") then
+            v.Disabled = true
+        end
+    end
+elseif newanimate then
+    local animate = gp(c, "Animate", "LocalScript")
+    if animate and (not animate.Disabled) then
+        animate.Disabled = true
+    else
+        newanimate = false
+    end
+end
+
+if addtools then
+    for i, v in pairs(getchildren(addtools)) do
+        if isa(v, "Tool") then
+            v.Parent = c
+        end
+    end
+end
+
+pcall(function()
+    settings().Physics.AllowSleep = false
+    settings().Physics.PhysicsEnvironmentalThrottle = Enum.EnviromentalPhysicsThrottle.Disabled
+end)
+
+local OLDscripts = {}
+
+for i, v in pairs(getdescendants(c)) do
+    if v.ClassName == "Script" then
+        OLDscripts[v.Name] = true
+    end
+end
+
+local scriptNames = {}
+
+for i, v in pairs(getdescendants(c)) do
+    if isa(v, "BasePart") then
+        local newName, exists = tostring(i), true
+        while exists do
+            exists = OLDscripts[newName]
+            if exists then
+                newName = newName .. "_"    
+            end
+        end
+        table.insert(scriptNames, newName)
+        Instance.new("Script", v).Name = newName
+    end
+end
+
+local hum = c:FindFirstChildOfClass("Humanoid")
+if hum then
+    for i, v in pairs(hum:GetPlayingAnimationTracks()) do
+        v:Stop()
+    end
+end
+c.Archivable = true
+local cl = clone(c)
+if hum and humState16 then
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
+    if destroyhum then
+        twait(1.6)
+    end
+end
+if destroyhum then
+    pcall(destroy, hum)
+end
+
+if not c then
+    return
+end
+
+local head, torso, root = gp(c, "Head", "BasePart"), gp(c, "Torso", "BasePart") or gp(c, "UpperTorso", "BasePart"), gp(c, "HumanoidRootPart", "BasePart")
+if hatcollide then
+    pcall(destroy, torso)
+    pcall(destroy, root)
+    pcall(destroy, c:FindFirstChildOfClass("BodyColors") or gp(c, "Health", "Script"))
+end
+
+local model = Instance.new("Model", c)
+model:GetPropertyChangedSignal("Parent"):Connect(function()
+    if not (model and model.Parent) then
+        model = nil
+    end
+end)
+
+for i, v in pairs(getchildren(c)) do
+    if v ~= model then
+        if addtools and isa(v, "Tool") then
+            for i1, v1 in pairs(getdescendants(v)) do
+                if v1 and v1.Parent and isa(v1, "BasePart") then
+                    local bv = Instance.new("BodyVelocity")
+                    bv.Velocity, bv.MaxForce, bv.P, bv.Name = v3_0, v3(1000, 1000, 1000), 1250, "bv_" .. v.Name
+                    bv.Parent = v1
+                end
+            end
+        end
+        v.Parent = model
+    end
+end
+
+if breakjoints then
+    model:BreakJoints()
+else
+    if head and torso then
+        for i, v in pairs(getdescendants(model)) do
+            if isa(v, "JointInstance") then
+                local save = false
+                if (v.Part0 == torso) and (v.Part1 == head) then
+                    save = true
+                end
+                if (v.Part0 == head) and (v.Part1 == torso) then
+                    save = true
+                end
+                if save then
+                    if hedafterneck then
+                        hedafterneck = v
+                    end
+                else
+                    pcall(destroy, v)
+                end
+            end
+        end
+    end
+    if method == 3 then
+        task.delay(loadtime, pcall, model.BreakJoints, model)
+    end
+end
+
+cl.Parent = ws
+for i, v in pairs(getchildren(cl)) do
+    v.Parent = c
+end
+pcall(destroy, cl)
+
+local uncollide, noclipcon = nil, nil
+if noclipAllParts then
+    uncollide = function()
+        if c then
+            for i, v in pairs(getdescendants(c)) do
+                if isa(v, "BasePart") then
+                    v.CanCollide = false
+                end
+            end
+        else
+            noclipcon:Disconnect()
+        end
+    end
+else
+    uncollide = function()
+        if model then
+            for i, v in pairs(getdescendants(model)) do
+                if isa(v, "BasePart") then
+                    v.CanCollide = false
+                end
+            end
+        else
+            noclipcon:Disconnect()
+        end
+    end
+end
+noclipcon = stepped:Connect(uncollide)
+uncollide()
+
+for i, scr in pairs(getdescendants(model)) do
+    if (scr.ClassName == "Script") and table.find(scriptNames, scr.Name) then
+        local Part0 = scr.Parent
+        if isa(Part0, "BasePart") then
+            for i1, scr1 in pairs(getdescendants(c)) do
+                if (scr1.ClassName == "Script") and (scr1.Name == scr.Name) and (not scr1:IsDescendantOf(model)) then
+                    local Part1 = scr1.Parent
+                    if (Part1.ClassName == Part0.ClassName) and (Part1.Name == Part0.Name) then
+                        align(Part0, Part1)
+                        pcall(destroy, scr)
+                        pcall(destroy, scr1)
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
+for i, v in pairs(getdescendants(c)) do
+    if v and v.Parent and (not v:IsDescendantOf(model)) then
+        if isa(v, "Decal") then
+            v.Transparency = 1
+        elseif isa(v, "BasePart") then
+            v.Transparency = 1
+            v.Anchored = false
+        elseif isa(v, "ForceField") then
+            v.Visible = false
+        elseif isa(v, "Sound") then
+            v.Playing = false
+        elseif isa(v, "BillboardGui") or isa(v, "SurfaceGui") or isa(v, "ParticleEmitter") or isa(v, "Fire") or isa(v, "Smoke") or isa(v, "Sparkles") then
+            v.Enabled = false
+        end
+    end
+end
+
+if newanimate then
+    local animate = gp(c, "Animate", "LocalScript")
+    if animate then
+        animate.Disabled = false
+    end
+end
+
+if addtools then
+    for i, v in pairs(getchildren(c)) do
+        if isa(v, "Tool") then
+            v.Parent = addtools
+        end
+    end
+end
+
+local hum0, hum1 = model:FindFirstChildOfClass("Humanoid"), c:FindFirstChildOfClass("Humanoid")
+if hum0 then
+    hum0:GetPropertyChangedSignal("Parent"):Connect(function()
+        if not (hum0 and hum0.Parent) then
+            hum0 = nil
+        end
+    end)
+end
+if hum1 then
+    hum1:GetPropertyChangedSignal("Parent"):Connect(function()
+        if not (hum1 and hum1.Parent) then
+            hum1 = nil
+        end
+    end)
+
+    ws.CurrentCamera.CameraSubject = hum1
+    local camSubCon = nil
+    local function camSubFunc()
+        camSubCon:Disconnect()
+        if c and hum1 then
+            ws.CurrentCamera.CameraSubject = hum1
+        end
+    end
+    camSubCon = renderstepped:Connect(camSubFunc)
+    if hum0 then
+        hum0:GetPropertyChangedSignal("Jump"):Connect(function()
+            if hum1 then
+                hum1.Jump = hum0.Jump
+            end
+        end)
+    else
+        respawnrequest()
+    end
+end
+
+local rb = Instance.new("BindableEvent", c)
+rb.Event:Connect(function()
+    pcall(destroy, rb)
+    sg:SetCore("ResetButtonCallback", true)
+    if destroyhum then
+        if c then c:BreakJoints() end
+        return
+    end
+    if model and hum0 and (hum0.Health > 0) then
+        model:BreakJoints()
+        hum0.Health = 0
+    end
+    if antirespawn then
+        respawnrequest()
+    end
+end)
+sg:SetCore("ResetButtonCallback", rb)
+
+tdelay(0, function()
+    while c do
+        if hum0 and hum1 then
+            hum1.Jump = hum0.Jump
+        end
+        wait()
+    end
+    sg:SetCore("ResetButtonCallback", true)
+end)
+
+R15toR6 = R15toR6 and hum1 and (hum1.RigType == Enum.HumanoidRigType.R15)
+if R15toR6 then
+    local part = gp(c, "HumanoidRootPart", "BasePart") or gp(c, "UpperTorso", "BasePart") or gp(c, "LowerTorso", "BasePart") or gp(c, "Head", "BasePart") or c:FindFirstChildWhichIsA("BasePart")
+    if part then
+        local cfr = part.CFrame
+        local R6parts = { 
+            head = {
+                Name = "Head",
+                Size = v3(2, 1, 1),
+                R15 = {
+                    Head = 0
+                }
+            },
+            torso = {
+                Name = "Torso",
+                Size = v3(2, 2, 1),
+                R15 = {
+                    UpperTorso = 0.2,
+                    LowerTorso = -0.8
+                }
+            },
+            root = {
+                Name = "HumanoidRootPart",
+                Size = v3(2, 2, 1),
+                R15 = {
+                    HumanoidRootPart = 0
+                }
+            },
+            leftArm = {
+                Name = "Left Arm",
+                Size = v3(1, 2, 1),
+                R15 = {
+                    LeftHand = -0.849,
+                    LeftLowerArm = -0.174,
+                    LeftUpperArm = 0.415
+                }
+            },
+            rightArm = {
+                Name = "Right Arm",
+                Size = v3(1, 2, 1),
+                R15 = {
+                    RightHand = -0.849,
+                    RightLowerArm = -0.174,
+                    RightUpperArm = 0.415
+                }
+            },
+            leftLeg = {
+                Name = "Left Leg",
+                Size = v3(1, 2, 1),
+                R15 = {
+                    LeftFoot = -0.85,
+                    LeftLowerLeg = -0.29,
+                    LeftUpperLeg = 0.49
+                }
+            },
+            rightLeg = {
+                Name = "Right Leg",
+                Size = v3(1, 2, 1),
+                R15 = {
+                    RightFoot = -0.85,
+                    RightLowerLeg = -0.29,
+                    RightUpperLeg = 0.49
+                }
+            }
+        }
+        for i, v in pairs(getchildren(c)) do
+            if isa(v, "BasePart") then
+                for i1, v1 in pairs(getchildren(v)) do
+                    if isa(v1, "Motor6D") then
+                        v1.Part0 = nil
+                    end
+                end
+            end
+        end
+        part.Archivable = true
+        for i, v in pairs(R6parts) do
+            local part = clone(part)
+            part:ClearAllChildren()
+            part.Name, part.Size, part.CFrame, part.Anchored, part.Transparency, part.CanCollide = v.Name, v.Size, cfr, false, 1, false
+            for i1, v1 in pairs(v.R15) do
+                local R15part = gp(c, i1, "BasePart")
+                local att = gp(R15part, "att1_" .. i1, "Attachment")
+                if R15part then
+                    local weld = Instance.new("Weld")
+                    weld.Part0, weld.Part1, weld.C0, weld.C1, weld.Name = part, R15part, cf(0, v1, 0), cf_0, "Weld_" .. i1
+                    weld.Parent = R15part
+                    R15part.Massless, R15part.Name = true, "R15_" .. i1
+                    R15part.Parent = part
+                    if att then
+                        att.Position = v3(0, v1, 0)
+                        att.Parent = part
+                    end
+                end
+            end
+            part.Parent = c
+            R6parts[i] = part
+        end
+        local R6joints = {
+            neck = {
+                Parent = R6parts.torso,
+                Name = "Neck",
+                Part0 = R6parts.torso,
+                Part1 = R6parts.head,
+                C0 = cf(0, 1, 0, -1, 0, 0, 0, 0, 1, 0, 1, -0),
+                C1 = cf(0, -0.5, 0, -1, 0, 0, 0, 0, 1, 0, 1, -0)
+            },
+            rootJoint = {
+                Parent = R6parts.root,
+                Name = "RootJoint" ,
+                Part0 = R6parts.root,
+                Part1 = R6parts.torso,
+                C0 = cf(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, -0),
+                C1 = cf(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, -0)
+            },
+            rightShoulder = {
+                Parent = R6parts.torso,
+                Name = "Right Shoulder",
+                Part0 = R6parts.torso,
+                Part1 = R6parts.rightArm,
+                C0 = cf(1, 0.5, 0, 0, 0, 1, 0, 1, -0, -1, 0, 0),
+                C1 = cf(-0.5, 0.5, 0, 0, 0, 1, 0, 1, -0, -1, 0, 0)
+            },
+            leftShoulder = {
+                Parent = R6parts.torso,
+                Name = "Left Shoulder",
+                Part0 = R6parts.torso,
+                Part1 = R6parts.leftArm,
+                C0 = cf(-1, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
+                C1 = cf(0.5, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0)
+            },
+            rightHip = {
+                Parent = R6parts.torso,
+                Name = "Right Hip",
+                Part0 = R6parts.torso,
+                Part1 = R6parts.rightLeg,
+                C0 = cf(1, -1, 0, 0, 0, 1, 0, 1, -0, -1, 0, 0),
+                C1 = cf(0.5, 1, 0, 0, 0, 1, 0, 1, -0, -1, 0, 0)
+            },
+            leftHip = {
+                Parent = R6parts.torso,
+                Name = "Left Hip" ,
+                Part0 = R6parts.torso,
+                Part1 = R6parts.leftLeg,
+                C0 = cf(-1, -1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
+                C1 = cf(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0)
+            }
+        }
+        for i, v in pairs(R6joints) do
+            local joint = Instance.new("Motor6D")
+            for prop, val in pairs(v) do
+                joint[prop] = val
+            end
+            R6joints[i] = joint
+        end
+        if hum1 then
+            hum1.RigType, hum1.HipHeight = Enum.HumanoidRigType.R6, 0
+        end
+    end
+end
+
+local torso1 = torso
+torso = gp(c, "Torso", "BasePart") or ((not R15toR6) and gp(c, torso.Name, "BasePart"))
+if (typeof(hedafterneck) == "Instance") and head and torso and torso1 then
+    local conNeck, conTorso, conTorso1 = nil, nil, nil
+    local aligns = {}
+    local function enableAligns()
+        conNeck:Disconnect()
+        conTorso:Disconnect()
+        conTorso1:Disconnect()
+        for i, v in pairs(aligns) do
+            v.Enabled = true
+        end
+    end
+    conNeck = hedafterneck.Changed:Connect(function(prop)
+        if table.find({"Part0", "Part1", "Parent"}, prop) then
+            enableAligns()
+        end
+    end)
+    conTorso = torso:GetPropertyChangedSignal("Parent"):Connect(enableAligns)
+    conTorso1 = torso1:GetPropertyChangedSignal("Parent"):Connect(enableAligns)
+    for i, v in pairs(getdescendants(head)) do
+        if isa(v, "AlignPosition") or isa(v, "AlignOrientation") then
+            i = tostring(i)
+            aligns[i] = v
+            v:GetPropertyChangedSignal("Parent"):Connect(function()
+                aligns[i] = nil
+            end)
+            v.Enabled = false
+        end
+    end
+end
+
+local flingpart0 = gp(model, flingpart, "BasePart") or gp(gp(model, flingpart, "Accessory"), "Handle", "BasePart")
+local flingpart1 = gp(c, flingpart, "BasePart") or gp(gp(c, flingpart, "Accessory"), "Handle", "BasePart")
+
+local fling = function() end
+if flingpart0 and flingpart1 then
+    flingpart0:GetPropertyChangedSignal("Parent"):Connect(function()
+        if not (flingpart0 and flingpart0.Parent) then
+            flingpart0 = nil
+            fling = function() end
+        end
+    end)
+    flingpart0.Archivable = true
+    flingpart1:GetPropertyChangedSignal("Parent"):Connect(function()
+        if not (flingpart1 and flingpart1.Parent) then
+            flingpart1 = nil
+            fling = function() end
+        end
+    end)
+    local att0 = gp(flingpart0, "att0_" .. flingpart0.Name, "Attachment")
+    local att1 = gp(flingpart1, "att1_" .. flingpart1.Name, "Attachment")
+    if att0 and att1 then
+        att0:GetPropertyChangedSignal("Parent"):Connect(function()
+            if not (att0 and att0.Parent) then
+                att0 = nil
+                fling = function() end
+            end
+        end)
+        att1:GetPropertyChangedSignal("Parent"):Connect(function()
+            if not (att1 and att1.Parent) then
+                att1 = nil
+                fling = function() end
+            end
+        end)
+        local lastfling = nil
+        local mouse = lp:GetMouse()
+        fling = function(target, duration, rotVelocity)
+            if typeof(target) == "Instance" then
+                if isa(target, "BasePart") then
+                    target = target.Position
+                elseif isa(target, "Model") then
+                    target = gp(target, "HumanoidRootPart", "BasePart") or gp(target, "Torso", "BasePart") or gp(target, "UpperTorso", "BasePart") or target:FindFirstChildWhichIsA("BasePart")
+                    if target then
+                        target = target.Position
+                    else
+                        return
+                    end
+                elseif isa(target, "Humanoid") then
+                    target = target.Parent
+                    if not (target and isa(target, "Model")) then
+                        return
+                    end
+                    target = gp(target, "HumanoidRootPart", "BasePart") or gp(target, "Torso", "BasePart") or gp(target, "UpperTorso", "BasePart") or target:FindFirstChildWhichIsA("BasePart")
+                    if target then
+                        target = target.Position
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            elseif typeof(target) == "CFrame" then
+                target = target.Position
+            elseif typeof(target) ~= "Vector3" then
+                target = mouse.Hit
+                if target then
+                    target = target.Position
+                else
+                    return
+                end
+            end
+            if target.Y < ws.FallenPartsDestroyHeight + 5 then
+                target = v3(target.X, ws.FallenPartsDestroyHeight + 5, target.Z)
+            end
+            lastfling = target
+            if type(duration) ~= "number" then
+                duration = tonumber(duration) or 0.5
+            end
+            if typeof(rotVelocity) ~= "Vector3" then
+                rotVelocity = v3(20000, 20000, 20000)
+            end
+            if not (target and flingpart0 and flingpart1 and att0 and att1) then
+                return
+            end
+            flingpart0.Archivable = true
+            local flingpart = clone(flingpart0)
+            flingpart.Transparency = 1
+            flingpart.CanCollide = false
+            flingpart.Name = "flingpart_" .. flingpart0.Name
+            flingpart.Anchored = true
+            flingpart.Velocity = v3_0
+            flingpart.RotVelocity = v3_0
+            flingpart.Position = target
+            flingpart:GetPropertyChangedSignal("Parent"):Connect(function()
+                if not (flingpart and flingpart.Parent) then
+                    flingpart = nil
+                end
+            end)
+            flingpart.Parent = flingpart1
+            if flingpart0.Transparency > 0.5 then
+                flingpart0.Transparency = 0.5
+            end
+            att1.Parent = flingpart
+            local con = nil
+            local rotchg = v3(0, rotVelocity.Unit.Y * -1000, 0)
+            con = heartbeat:Connect(function(delta)
+                if target and (lastfling == target) and flingpart and flingpart0 and flingpart1 and att0 and att1 then
+                    flingpart.Orientation += rotchg * delta
+                    flingpart0.RotVelocity = rotVelocity
+                else
+                    con:Disconnect()
+                end
+            end)
+            if alignmode ~= 4 then
+                local con = nil
+                con = renderstepped:Connect(function()
+                    if flingpart0 and target then
+                        flingpart0.RotVelocity = v3_0
+                    else
+                        con:Disconnect()
+                    end
+                end)
+            end
+            twait(duration)
+            if lastfling ~= target then
+                if flingpart then
+                    if att1 and (att1.Parent == flingpart) then
+                        att1.Parent = flingpart1
+                    end
+                    pcall(destroy, flingpart)
+                end
+                return
+            end
+            target = nil
+            if not (flingpart and flingpart0 and flingpart1 and att0 and att1) then
+                return
+            end
+            flingpart0.RotVelocity = v3_0
+            att1.Parent = flingpart1
+            pcall(destroy, flingpart)
+        end
+    end
+end
+Notification.Notify("            FireVR", "Successfully reanimated your localplayer. Waiting 5 seconds...", "rbxasset://9616518668", {
+    Duration = 5,       
+    Main = {
+        Rounding = true,
+    }
+});
+wait(5)
+print("███████╗██╗██████╗ ███████╗██╗   ██╗██████╗     ██████╗ ██╗   ██╗    ███████╗██╗██████╗  ██████╗ ██╗  ██╗")
+print("██╔════╝██║██╔══██╗██╔════╝██║   ██║██╔══██╗    ██╔══██╗╚██╗ ██╔╝    ██╔════╝██║██╔══██╗██╔═══██╗╚██╗██╔╝")
+print("█████╗  ██║██████╔╝█████╗  ██║   ██║██████╔╝    ██████╔╝ ╚████╔╝     █████╗  ██║██████╔╝██║   ██║ ╚███╔╝ ")
+print("██╔══╝  ██║██╔══██╗██╔══╝  ╚██╗ ██╔╝██╔══██╗    ██╔══██╗  ╚██╔╝      ██╔══╝  ██║██╔══██╗██║   ██║ ██╔██╗ ")
+print("██║     ██║██║  ██║███████╗ ╚████╔╝ ██║  ██║    ██████╔╝   ██║       ██║     ██║██║  ██║╚██████╔╝██╔╝ ██╗")
+print("╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝  ╚═══╝  ╚═╝  ╚═╝    ╚═════╝    ╚═╝       ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝")
+print("You are currently running FireVr build: v1.2 !")
+print("Changelogs:")
+print("V1.0 Added more stable netless")
+print("V1.1 Added working net")
+print("V1.2 Lagging fixed (kinda)")
+Notification.Notify("            FireVR", "Thanks for using FireVR", "rbxassetid://9616518668", {
+    Duration = 5,       
+    Main = {
+        Rounding = true,
+    }
+});
+
+game:GetService("RunService").Heartbeat:connect(
+    function()
+        if _G.R1down then
+            workspace.CurrentCamera.CFrame =
+                workspace.CurrentCamera.CFrame:Lerp(
+                workspace.CurrentCamera.CoordinateFrame +
+                    (_G.HandR * CFrame.Angles(0, 0, math.rad(180))).LookVector * workspace.CurrentCamera.HeadScale / 2,
+                0.5
+            )
+        end
+    end
+)
+local g = game:GetService("Players").LocalPlayer
+local j = g.Character
+local k = game:GetService("VRService")
+local l = game:GetService("UserInputService")
+local m = workspace.CurrentCamera
+local n = game:GetService("Chat")
+local o = "Hat1"
+local p = "Kate Hair"
+local r = "LUAhEAD"
+local s = j.HumanoidRootPart
+s.Transparency = 0
+local t = {
+    ["Lazgewehr-58"] = true,
+    ["MeshPartAccessory"] = true,
+    ["Meshes/SniperAccessory"] = true,
+    ["AR-L 10 [Back]"] = true,
+    ["ThorHammer"] = true,
+    ["BackGun"] = true,
+    ["Black Type-37 Pulse Rifle"] = true,
+    ["Juggernaut's Chaingun"] = true,
+    ["Meshes/M4A1Accessory"] = true,
+    ["Nagamaki"] = true,
+    ["WDW_FoamFinger"] = true,
+    ["MARTILLO"] = true,
+    ["StopSign"] = true,
+    ["Meshes/DB12Accessory"] = true
+}
+
+for e, f in pairs(j.Humanoid:GetAccessories()) do
+    if f:FindFirstChild("Handle") then
+        if t[f.Name] then
+            _G.WeaponHat = f.Name
+        elseif f.Handle:FindFirstChild("BodyBackAttachment") and f.name ~= _G.spinningitem then
+            _G.BackItem = f.Name
+        end
+    end
+end
+if _G.WeaponHat == "Gerbil" then
+plr:kick("Whats the matter on using the right hats?")
+end
+m.CFrame = CFrame.new(m.CFrame.Position)
+m.CameraType = "Scriptable"
+m.HeadScale = _G.headscale
+local o = "Hat1"
+local p = "Kate Hair"
+
+local r = "LUAhEAD"
+for e, f in pairs(j:GetDescendants()) do
+    if f:IsA("BasePart") and f.Name ~= "HumanoidRootPart" and f.Name ~= "Torso" then
+        game:GetService("RunService").Heartbeat:connect(
+            function()
+                f.Velocity = Vector3.new(-30, 0, 0)
+            end
+        )
+    end
+end
+local u = {}
+local v = false
+local w
+local x
+local y
+local z
+local A
+local B
+_G.HandR = CFrame.new(0, 0, 0)
+_G.R1down = false
+for C, D in pairs(j:GetDescendants()) do
+    if D:IsA("Accessory") then
+        if D.Name == o or D.Name == p or D.Name == r then
+            for E, F in pairs(D["Handle"]:GetDescendants()) do
+                if F:IsA("SpecialMesh") then
+                    F:Destroy()
+                end
+            end
+        elseif D.Name ~= _G.WeaponHat and D.Name ~= _G.BackItem then
+            D.Handle.Transparency = 0.9
+            table.insert(u, D)
+        end
+    end
+end
+for e, f in pairs(j.Humanoid:GetAccessories()) do
+    if f.Handle ~= nil then
+        local G = f.Handle
+        if f.Name == o and not x then
+            x = f
+        elseif f.Name == p and not w then
+            w = f
+        elseif f.Name == r then
+            z = f
+        elseif f.Name == _G.BackItem then
+            y = f
+        elseif f.Name == q then
+            B = f
+        elseif f.Name == _G.WeaponHat then
+            A = f
+            if f.Name == "MeshPartAccessory" and G.Size.X == 4 and G.Size.Y == 4 and G.Size.Z == 1 then
+                A.Name = "Sword"
+                A = f
+            end
+        end
+    end
+end
+game:GetService("StarterGui"):SetCore("VRLaserPointerMode", 0)
+game:GetService("StarterGui"):SetCore("VREnableControllerModels", false)
+local function H(I, J)
+    local K = Instance.new("Part", workspace)
+    K.Size = I
+    K.Transparency = 1
+    K.CanCollide = false
+    K.Anchored = true
+    K.Name = J
+    return K
+end
+local L = H(x.Handle.Size, "moveRH")
+local M = H(w.Handle.Size, "moveLH")
+local N = H(Vector3.new(1, 1, 1), "moveH")
+local O = H(x.Handle.Size, "moveW")
+local P = H(z.Handle.Size, "moveT")
+local Q = H(Vector3.new(1, 1, 1), "moveB")
+local R = H(Vector3.new(1, 1, 1), "GunThing")
+local K = H(Vector3.new(1, 1, 1), "Part")
+local S = Instance.new("SelectionBox", L)
+S.Adornee = L
+S.LineThickness = 0.02
+local T = Instance.new("SelectionBox", L)
+T.Adornee = M
+T.LineThickness = 0.02
+local U = Instance.new("Attachment", M)
+U.Position = Vector3.new(0, M.Size.Y / 2, 1)
+U.Orientation = Vector3.new(0, -90, 0)
+local V = Instance.new("Attachment", M)
+V.Position = Vector3.new(0, -M.Size.Y / 2, 1)
+V.Orientation = Vector3.new(0, -90, 0)
+local W = Instance.new("Trail", M)
+W.Enabled = false
+W.Color =
+    ColorSequence.new {
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(85, 85, 85))
+}
+W.Transparency =
+    NumberSequence.new {
+    NumberSequenceKeypoint.new(0, 0),
+    NumberSequenceKeypoint.new(0.536, 1),
+    NumberSequenceKeypoint.new(1, 1)
+}
+W.Attachment0 = U
+W.Attachment1 = V
+local X = Instance.new("Attachment", L)
+X.Position = Vector3.new(0, L.Size.Y / 2, 1)
+X.Orientation = Vector3.new(0, -90, 0)
+local Y = Instance.new("Attachment", L)
+Y.Position = Vector3.new(0, -M.Size.Y / 2, 1)
+Y.Orientation = Vector3.new(0, -90, 0)
+local Z = Instance.new("Trail", L)
+Z.Enabled = false
+Z.Color =
+    ColorSequence.new {
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(85, 85, 85))
+}
+Z.Transparency =
+    NumberSequence.new {
+    NumberSequenceKeypoint.new(0, 0),
+    NumberSequenceKeypoint.new(0.536, 1),
+    NumberSequenceKeypoint.new(1, 1)
+}
+Z.Attachment0 = X
+Z.Attachment1 = Y
+local _ = Instance.new("Attachment", O)
+_.Position = Vector3.new(0, 0, 0)
+_.Orientation = Vector3.new(0, -90, 0)
+local a0 = Instance.new("Attachment", K)
+_.Position = Vector3.new(0, 0, 0)
+a0.Orientation = Vector3.new(0, -90, 0)
+local a1 = Instance.new("Beam", O)
+a1.Enabled = false
+a1.Color =
+    ColorSequence.new {
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(85, 85, 85))
+}
+a1.Transparency = NumberSequence.new {NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)}
+a1.FaceCamera = true
+a1.Attachment0 = _
+a1.Attachment1 = a0
+j["Left Leg"]:Destroy()
+j["Right Leg"]:Destroy()
+j["Left Arm"]:Destroy()
+j["Right Arm"]:Destroy()
+local function a2(a3, a4)
+    local a2 = Instance.new("AlignPosition", a3)
+    a2.Parent.CanCollide = false
+    a2.ApplyAtCenterOfMass = true
+    a2.MaxForce = 9e9
+    a2.MaxVelocity = 9e9
+    a2.ReactionForceEnabled = false
+    a2.Responsiveness = 9e9
+    a2.RigidityEnabled = false
+    local a5 = Instance.new("Attachment", a3)
+    local a6 = Instance.new("Attachment", a4)
+    a6.CFrame = a6.CFrame
+    a2.Attachment0 = a5
+    a2.Attachment1 = a6
+end
+local a7 = Instance.new("Sound", O)
+a7.SoundId = "rbxassetid://168143115"
+a7.Volume = 4
+local a8
+local a9 = N.Position
+K.Position = N.Position
+local function aa()
+    a7:Play()
+    local ab = R.Position
+    local ac = R.CFrame.LookVector * 400
+    local ad = RaycastParams.new()
+    ad.FilterDescendantsInstances = {A.Handle, M, L, x.Handle, w.Handle}
+    ad.FilterType = Enum.RaycastFilterType.Blacklist
+    a8 = workspace:Raycast(ab, ac, ad)
+    if a8 then
+        local ae = a8.Instance
+        a0.WorldPosition = a8.Position
+        a1.Enabled = true
+        a9 = a8.Position
+        K.Position = a9 + Vector3.new(0, 1, 0)
+    end
+    wait(.1)
+    a1.Enabled = false
+end
+l.InputChanged:connect(
+    function(af)
+        if af.KeyCode == _G.MoveCamButton then
+            if af.Position.Z > 0.9 then
+                _G.R1down = true
+                Z.Enabled = true
+                W.Enabled = true
+            else
+                _G.R1down = false
+                Z.Enabled = false
+                W.Enabled = false
+            end
+        end
+        if af.KeyCode == Enum.KeyCode.ButtonR2 and v == true then
+            if af.Position.Z > 0.9 then
+                aa()
+            end
+        end
+        if af.KeyCode == _G.WeaponButton then
+            if af.Position.Z > 0.9 then
+                if v == true then
+                    v = false
+                elseif v == false then
+                    v = true
+                end
+            end
+        end
+    end
+)
+l.InputBegan:connect(
+    function(af)
+        if af.KeyCode == _G.MoveCamButton then
+            _G.R1down = true
+            Z.Enabled = true
+            W.Enabled = true
+        end
+        if af.KeyCode == _G.WeaponButton then
+            if v == true then
+                v = false
+            elseif v == false then
+                v = true
+            end
+        end
+    end
+)
+l.InputEnded:connect(
+    function(af)
+        if af.KeyCode == _G.MoveCamButton then
+            Z.Enabled = false
+            W.Enabled = false
+        end
+    end
+)
+game.Players.PlayerAdded:connect(
+    function(f)
+        f.Chatted:connect(
+            function(ag)
+                n:Chat(g.Character.Head, ag)
+            end
+        )
+    end
+)
+for e, f in pairs(game.Players:GetPlayers()) do
+    f.Chatted:connect(
+        function(ag)
+            n:Chat(f.Character.Head, ag)
+        end
+    )
+end
+local function ah(a3, a4)
+    local a2 = Instance.new("AlignPosition", a3)
+    a2.Parent.CanCollide = false
+    a2.ApplyAtCenterOfMass = true
+    a2.MaxForce = 9e9
+    a2.MaxVelocity = 9e9
+    a2.ReactionForceEnabled = false
+    a2.Responsiveness = 9e9
+    a2.RigidityEnabled = false
+    local ai = Instance.new("AlignOrientation", a3)
+    ai.MaxAngularVelocity = 9e9
+    ai.MaxTorque = 9e9
+    ai.PrimaryAxisOnly = false
+    ai.ReactionTorqueEnabled = false
+    ai.Responsiveness = 9e9
+    ai.RigidityEnabled = false
+    local a5 = Instance.new("Attachment", a3)
+    local a6 = Instance.new("Attachment", a4)
+    a6.CFrame = a6.CFrame
+    a2.Attachment0 = a5
+    a2.Attachment1 = a6
+    ai.Attachment0 = a5
+    ai.Attachment1 = a6
+end
+l.UserCFrameChanged:connect(
+    function(aj, ak)
+        if aj == Enum.UserCFrame.Head then
+            N.CFrame = m.CFrame * CFrame.new(ak.p * (m.HeadScale - 1)) * ak
+        elseif aj == Enum.UserCFrame.LeftHand then
+            L.CFrame = m.CFrame * CFrame.new(ak.p * (m.HeadScale - 1)) * ak
+        elseif aj == Enum.UserCFrame.RightHand then
+            M.CFrame = m.CFrame * CFrame.new(ak.p * (m.HeadScale - 1)) * ak
+            _G.HandR = M.CFrame
+        end
+    end
+)
+spawn(
+    function()
+        for al = 1, #u do
+            local am = u[al]
+            am.Handle:BreakJoints()
+            ah(am.Handle, N)
+        end
+        x.Handle:BreakJoints()
+        w.Handle:BreakJoints()
+        z.Handle:BreakJoints()
+        if A.Name ~= "MeshPartAccessory" then
+            A.Handle:BreakJoints()
+            ah(A.Handle, O)
+        end
+        ah(x.Handle, M)
+        ah(w.Handle, L)
+        ah(z.Handle, P)
+        if _G.BackItem ~= "" then
+            y.Handle:BreakJoints()
+            ah(y.Handle, Q)
+        end
+        B.Handle:BreakJoints()
+        B.Handle.Transparency = 0
+    end
+)
+local an = 1
+game:GetService("RunService").Heartbeat:connect(
+    function()
+        an = an + 0.4
+        P.CFrame = N.CFrame * CFrame.new(0, -2.3, 0) * CFrame.Angles(math.rad(90), math.rad(0), math.rad(0))
+        if _G.BackItem ~= "" or _G.BackItem ~= nil then
+            Q.CFrame = P.CFrame * CFrame.new(0, 0.5, 0) * CFrame.Angles(math.rad(90), math.rad(180), math.rad(180))
+        end
+        local ao = P.Position
+        local ap = Vector3.new(0, -300, 0)
+        local aq = RaycastParams.new()
+        aq.FilterDescendantsInstances = {game.Players.LocalPlayer.Character, K}
+        aq.FilterType = Enum.RaycastFilterType.Blacklist
+        local ar = workspace:Raycast(ao, ap, aq)
+        if ar then
+            B.Handle.CFrame =
+                CFrame.new(ar.Position) * CFrame.new(-1.5, 0, 0) *
+                CFrame.Angles(math.rad(90), math.rad(0), math.rad(an))
+        else
+            B.Handle.CFrame = P.CFrame * CFrame.new(0, 0, -5) * CFrame.Angles(math.rad(90), math.rad(0), math.rad(an))
+        end
+    end
+)
+game:GetService("RunService").Heartbeat:connect(
+    function()
+        if v == true then
+            if _G.WeaponHat == "AR-L 10 [Back]" then
+                R.CFrame = M.CFrame * CFrame.new(-1.6, 0.7, 0)
+                O.CFrame = M.CFrame * CFrame.Angles(0, math.rad(270), 0) * CFrame.new(-1.6, 0.7, 0)
+            elseif _G.WeaponHat == "Meshes/SniperAccessory" then
+                R.CFrame = M.CFrame * CFrame.new(-0.7, 2.2, 0)
+                O.CFrame = M.CFrame * CFrame.Angles(0, math.rad(270), math.rad(52)) * CFrame.new(-0.7, 2.2, 0)
+            elseif _G.WeaponHat == "Meshes/DB12Accessory" then
+                R.CFrame = M.CFrame * CFrame.new(0, .65, -1.8)
+                O.CFrame = M.CFrame * CFrame.new(0, .65, -1.6) * CFrame.Angles(math.rad(0), math.rad(180), math.rad(0))
+            elseif A.Name == "Sword" and _G.WeaponHat == "MeshPartAccessory" then
+                O.CFrame = M.CFrame * CFrame.new(-0.4, 3, 0) * CFrame.Angles(0, math.rad(270), math.rad(-135))
+            elseif _G.WeaponHat == "GoldAxe" then
+                K.CFrame = M.CFrame * CFrame.new(0, 3, -1)
+                O.CFrame = M.CFrame * CFrame.Angles(0, math.rad(270), math.rad(45)) * CFrame.new(1, 2.2, 0)
+            elseif _G.WeaponHat == "Lazgewehr-58" then
+                R.CFrame = M.CFrame * CFrame.new(0, 0.8, -1.2)
+                O.CFrame = M.CFrame * CFrame.new(0, 0.8, -1.2) * CFrame.Angles(math.rad(0), math.rad(450), math.rad(45))
+            elseif _G.WeaponHat == "ThorHammer" then
+                O.CFrame =
+                    M.CFrame * CFrame.new(-0.7, 0.9, -0.25) * CFrame.Angles(math.rad(0), math.rad(155), math.rad(20))
+            elseif _G.WeaponHat == "Nagamaki" then
+                K.CFrame = M.CFrame * CFrame.new(0, 4.5, -0.5) * CFrame.Angles(0, math.rad(450), math.rad(142))
+                O.CFrame = M.CFrame * CFrame.new(0, 2.3, -0.5) * CFrame.Angles(0, math.rad(450), math.rad(142))
+            elseif _G.WeaponHat == "WDW_FoamFinger" then
+                K.CFrame = M.CFrame * CFrame.new(0, 1, -0.3)
+                O.CFrame = M.CFrame * CFrame.new(0, 1.5, -0.3) * CFrame.Angles(0, math.rad(360), math.rad(0))
+            elseif _G.WeaponHat == "Juggernaut's Chaingun" then
+                R.CFrame = M.CFrame * CFrame.new(0, 0.8, -2)
+                O.CFrame = M.CFrame * CFrame.new(0, 0.8, -2) * CFrame.Angles(0, math.rad(0), math.rad(0))
+            elseif _G.WeaponHat == "BackGun" then
+                R.CFrame = M.CFrame * CFrame.new(0, 0.7, -0.8)
+                O.CFrame = M.CFrame * CFrame.new(0, 0.7, -0.8) * CFrame.Angles(0, math.rad(270), math.rad(-45))
+            elseif _G.WeaponHat == "Meshes/M4A1Accessory" then
+                R.CFrame = M.CFrame * CFrame.new(0, 0.8, -1)
+                O.CFrame = M.CFrame * CFrame.new(0, 0.8, -1) * CFrame.Angles(0, math.rad(270), math.rad(20))
+            elseif _G.WeaponHat == "MARTILLO" then
+                K.CFrame = M.CFrame * CFrame.new(0, 5, -2) * CFrame.Angles(math.rad(0), math.rad(0), math.rad(0))
+                O.CFrame = M.CFrame * CFrame.new(0, 2.5, -1.0) * CFrame.Angles(math.rad(0), math.rad(90), math.rad(0))
+            elseif _G.WeaponHat == "StopSign" then
+                K.CFrame = M.CFrame * CFrame.new(0, 4.5, -0.8)
+                O.CFrame = M.CFrame * CFrame.Angles(math.rad(0), math.rad(0), math.rad(0)) * CFrame.new(0, 2.5, -0.8)
+            end
+        else
+            O.CFrame = M.CFrame * CFrame.new(0, -50, 0)
+            K.CFrame = O.CFrame
+        end
+    end
+)
+if _G.Fling == true then
+    spawn(
+        function()
+            local s = game.Players.LocalPlayer.Character.HumanoidRootPart or game.Players.LocalPlayer.Character.Torso
+            game:GetService("RunService").Stepped:connect(
+                function()
+                    for as, f in pairs(game.Players.LocalPlayer.Character:children()) do
+                        pcall(
+                            function()
+                                if f:IsA("BasePart") and not f:IsA("Accessory") then
+                                    f.CanCollide = false
+                                end
+                            end
+                        )
+                    end
+                end
+            )
+            a2(s, K)
+            local at = Instance.new("BodyThrust", s)
+            at.Force = Vector3.new(999999 * 10, 0, 999999 * 10)
+            at.Location = s.Position
+        end
+    )
+end
+wait(5)
+Notification.Notify("            FireVR", "Fully loaded FireVR. Enjoy exploiting in vr!", "rbxassetid://9616518668", {
+    Duration = 5,       
+    Main = {
+        Rounding = true,
+    }
+});
