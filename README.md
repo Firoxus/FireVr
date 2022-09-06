@@ -12,8 +12,8 @@ _G.spinningitem = "Northern Star" -- the item you want to spin under you
 local q = "Northern Star" -- the item you want to spin under you
 
 --\\ Reanimation stuff //--
-local hatcollide = true --makes your Vr hands + head collide (you can lift other players) The game needs collision to work!!!
-
+local method = 3 --reanimation method only use 0 and 3
+local hatcollide = false -- only works with reanimation method 0
 
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Firoxus/FireVr/main/FireVrR6"))()
 ```
