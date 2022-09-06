@@ -12,7 +12,7 @@ _G.spinningitem = "Northern Star" -- the item you want to spin under you
 local q = "Northern Star" -- the item you want to spin under you
 
 --\\ Reanimation stuff //--
-local method = 3 --reanimation method only use 0 and 3
+local method = 3 --reanimation method only use 0 and 3 (3 is 10x more stable then 0 btw)
 local hatcollide = false -- only works with reanimation method 0
 
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Firoxus/FireVr/main/FireVrR6"))()
