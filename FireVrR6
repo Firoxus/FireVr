@@ -1,3 +1,40 @@
+local realfenv
+realfenv = hookfunction(getgenv().getfenv,function(a)
+    local num = tonumber(a)
+    if num then
+        if num > 10 or num < 1 then
+            error("Bypassing the error XD")
+        else
+            return realfenv()
+        end
+    else
+        return realfenv()
+    end
+end)
+ 
+local maxSim = 1000
+getgenv().setsimulationradius = newcclosure(function(i,v)
+    local plr = game.Players.LocalPlayer
+    sethiddenproperty(plr,"MaxSimulationRadius",maxSim)
+    sethiddenproperty(plr,"SimulationRadius",maxSim)
+end)
+ 
+local sethidden
+sethidden = hookfunction(getgenv().sethiddenproperty,function(i,p,v)
+    local plr = game.Players.LocalPlayer
+    if i == plr then
+        if (p == "MaxSimulationRadius" or p == "SimulationRadius") then
+            if v == maxSim then
+                sethidden(i,p,v)
+            end
+        else
+            sethidden(i,p,v)
+        end
+    else
+        sethidden(i,p,v)
+    end
+end)
+
 local plr = game:GetService("Players").LocalPlayer
 local Notification = loadstring(game:HttpGet("https://api.irisapp.ca/Scripts/IrisBetterNotifications.lua"))()
 getgenv().IrisAd = true
@@ -30,7 +67,6 @@ local humState16 = true --enables collisions for limbs before the humanoid dies 
 local addtools = false --puts all tools from backpack to character and lets you hold them after reanimation
 local hedafterneck = true --disable aligns for head and enable after neck or torso is removed
 local loadtime = game:GetService("Players").RespawnTime + 0.5 --anti respawn delay
-local method = 0 --reanimation method
 --methods:
 --0 - breakJoints (takes [loadtime] seconds to load)
 --1 - limbs
