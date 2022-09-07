@@ -35,6 +35,14 @@ sethidden = hookfunction(getgenv().sethiddenproperty,function(i,p,v)
     end
 end)
 
+for i,v in next, game:GetService("Players").LocalPlayer.Character:GetDescendants() do
+if v:IsA("BasePart") and v.Name ~="HumanoidRootPart" then 
+game:GetService("RunService").Heartbeat:connect(function()
+v.Velocity = Vector3.new(-30,0,0)
+end)
+end
+end
+
 local plr = game:GetService("Players").LocalPlayer
 local Notification = loadstring(game:HttpGet("https://api.irisapp.ca/Scripts/IrisBetterNotifications.lua"))()
 getgenv().IrisAd = true
