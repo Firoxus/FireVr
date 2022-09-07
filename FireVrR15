@@ -1,11 +1,3 @@
-_G.headhat = "BloxToyHead"
-_G.righthandhat = "Meshes/右手臂Accessory"
-_G.lefthandhat = "Meshes/左手臂Accessory"
-
-
---(btw moving can be janky at first but you will get used to it (im too lazy to fix it)!)
-
-
 local realfenv
 realfenv = hookfunction(getgenv().getfenv,function(a)
     local num = tonumber(a)
