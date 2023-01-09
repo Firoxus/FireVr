@@ -968,7 +968,7 @@ local t = {
     ["WDW_FoamFinger"] = true,
     ["MARTILLO"] = true,
     ["StopSign"] = true,
-    ["Meshes/DB12Accessory"] = true
+    ["Meshes/1911RightAccessoryy"] = true
 }
 
 for e, f in pairs(j.Humanoid:GetAccessories()) do
@@ -1334,7 +1334,7 @@ game:GetService("RunService").Heartbeat:connect(
             elseif _G.WeaponHat == "Meshes/SniperAccessory" then
                 R.CFrame = M.CFrame * CFrame.new(-0.7, 2.2, 0)
                 O.CFrame = M.CFrame * CFrame.Angles(0, math.rad(270), math.rad(52)) * CFrame.new(-0.7, 2.2, 0)
-            elseif _G.WeaponHat == "Meshes/DB12Accessory" then
+            elseif _G.WeaponHat == "Meshes/1911RightAccessory" then
                 R.CFrame = M.CFrame * CFrame.new(0, .65, -1.8)
                 O.CFrame = M.CFrame * CFrame.new(0, .65, -1.6) * CFrame.Angles(math.rad(0), math.rad(180), math.rad(0))
             elseif A.Name == "Sword" and _G.WeaponHat == "MeshPartAccessory" then
