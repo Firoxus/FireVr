@@ -903,6 +903,15 @@ Notification.Notify("            FireVR", "Successfully reanimated your localpla
         Rounding = true,
     }
 });
+
+if _G.removeguis == true then
+for i,v in next, game.Players.LocalPlayer.PlayerGui:GetChildren() do
+if v:IsA'ScreenGui' then
+v:Destroy()
+end
+end
+end
+
 wait(5)
 print("███████╗██╗██████╗ ███████╗██╗   ██╗██████╗     ██████╗ ██╗   ██╗    ███████╗██╗██████╗  ██████╗ ██╗  ██╗")
 print("██╔════╝██║██╔══██╗██╔════╝██║   ██║██╔══██╗    ██╔══██╗╚██╗ ██╔╝    ██╔════╝██║██╔══██╗██╔═══██╗╚██╗██╔╝")
