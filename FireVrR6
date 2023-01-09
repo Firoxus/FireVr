@@ -1009,7 +1009,7 @@ for C, D in pairs(j:GetDescendants()) do
                 end
             end
         elseif D.Name ~= _G.WeaponHat and D.Name ~= _G.BackItem then
-            D.Handle.Transparency = 0.9
+            D.Handle.Transparency = 1
             table.insert(u, D)
         end
     end
