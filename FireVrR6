@@ -50,7 +50,7 @@ local alignmode = 4 --AlignPosition mode
 --2 - 2 AlignPositions rigidity enabled both true and false
 --3 - AlignPosition rigidity enabled false
 --4 - CFrame
-local flingpart = "RockAccessory" --name of the part or the hat used for flinging
+local flingpart = "HumanoidRootPart" --name of the part or the hat used for flinging
 --the fling function
 --usage: fling(target, duration, velocity)
 --target can be set to: basePart, CFrame, Vector3, character model or humanoid (flings at mouse.Hit if argument not provided))
