@@ -35,7 +35,7 @@ local loadtime = game:GetService("Players").RespawnTime + 0.5 --anti respawn del
 --3 - limbs + breakJoints after [loadtime] seconds
 --4 - remove humanoid + breakJoints
 local flingparts = { --the fling function will use the first part available for flinging from this table
-    "UpperTorso", "RightUpperArm", "LeftUpperArm", "LowerTorso", "HumanoidRootPart", "Right Leg", "Left Leg", "Torso", "Head"
+    "HumanoidRootPart"
 }
 --the fling function
 --usage: fling(target, duration, velocity)
